@@ -1,6 +1,12 @@
 /*************************************************************************************
  * Author: 1st Lt Dalton Woods
  * shellfuncts.c - code definitions for myshell.c
+ * 
+ * My personal experience with the C programming language is very limited.  After
+ * creating the base code for each of the functions below I utilized ChatGPT for 
+ * debugging and overall optimization of my code.  I also used it extensively as a 
+ * learning tool to help me understand the specific syntax, libraries and functions 
+ * required/available for/to C. 
  *************************************************************************************/
 
 #include <stdio.h>
@@ -12,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #define BufferSize 256
 #define MaxArgs 10
@@ -81,10 +88,9 @@ int updateFile(const char *fileName, int number, const char *text) {
 		fprintf(file, "%s\n", text); //appends
 		fflush(file); //writes to the disk
 		//Force the os to sleep for a few seconds between each line
-		sleep(strlen(text) / 5);
+		sleep((unsigned int)(strlen(text) / 5));
 	}
 
-	
 	
 
 	//Close the file
@@ -142,7 +148,7 @@ void listDirectoryContents(){
 }
 /*************************************************************************************
  *  parseCommand- this function serves as a command parser.  It will break up commands
- * 		and split them as necessary. It also checks for background designation
+ * 		and split them as necessary. It also checks for background designations
  *
  *    Params: command - the command the user called
  * 			  args -  the args passed by other functions necessary to execute
@@ -190,7 +196,7 @@ void parseCommand(char *command, char **args, int *numArgs, bool *background){
  *  userCommand- a function to accept user input and call the necessary functions 
  * 		depending on what the user wants to do.
  *
- *    Params: command - the user input command arguments  			
+ *    Params: command - the user input command argument  			
  *
  *************************************************************************************/
 void userCommand(char *command){
@@ -198,10 +204,10 @@ void userCommand(char *command){
 	int numArgs;
 	bool background;
 
-	//this parses the user commands
+	//calls my function to parses the user's commands
 	parseCommand(command, args, &numArgs, &background);
 
-	//this handles empty commands
+	//handles empty commands
 	if (numArgs == 0){
 		return;
 	}
@@ -242,7 +248,7 @@ void userCommand(char *command){
 
 				
 			int number = atoi(args[2]);
-			//concatenates all remaining arguments into text string
+			//concatenates all remaining arguments into a text string
 			char text[BufferSize] = {0};
 			for (int i = 3; i < numArgs; ++i){
 				if (i > 3){
@@ -271,25 +277,40 @@ void userCommand(char *command){
 			//calls listDirectoryContents
 			listDirectoryContents();
 
+		}else if (strcmp(args[0], "help") == 0){
+			//checks help arguments
+			if (numArgs != 1){
+				fprintf(stderr, "You entered an invalid number of arguments for help. \n Please use: help ");
+				exit(EXIT_FAILURE);
+			}
+			
+			//print out the possible user commands and info about '&'
+			fprintf(stderr, "Please use any of the following commands: \n");
+			fprintf(stderr, " create <filename>\n update <filename> <number> <text>\n list <filename>\n dir\n halt\n help\n");
+			fprintf(stderr, "\n You can also add '&' to the end of a command to designate it to run in the background.\n");
+
+
 		}else {
 			//if user inputs something other than expected, let them know.
 			fprintf(stderr, "You enterred an unknown command: %s\n Please try again.\n", args[0]);
 			exit(EXIT_FAILURE);
 		}
 
+		//fixes a bug where the program would not exit the background process.
 		if (background) {
 			exit(EXIT_SUCCESS);
 		}else {
 			exit(EXIT_SUCCESS);
 		}
 
+
 	}else{
 		if (!background){
 			int status;
-			waitpid(pid, &status, 0); //wait for child to complete if not background
+			waitpid(pid, &status, 0); //shell waits for child to complete if it is not a background process
 		
 		}else {
-			fflush(stdout);
+			fflush(stdout); //pushes the output from a process directly to the terminal screen
 		}
 	}
 }
