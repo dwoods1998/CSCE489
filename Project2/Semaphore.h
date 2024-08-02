@@ -12,7 +12,9 @@ public:
 	void signal();
 
 private:
-
+	std::mutex mtx;
+	std::condition_variable cv;
+	int count;
 };
 
 #endif

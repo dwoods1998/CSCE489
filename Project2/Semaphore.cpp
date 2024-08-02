@@ -1,4 +1,7 @@
 #include <pthread.h>
+#include <iostream>
+#include <mutex>
+#include <condition_variable>
 #include "Semaphore.h"
 
 
@@ -9,10 +12,7 @@
  *    Params:  count - initialization count for the semaphore
  *
  *************************************************************************************/
-
-Semaphore::Semaphore(int count) {
-
-}
+Semaphore::Semaphore(int count) : count(count){}
 
 
 /*************************************************************************************
@@ -31,7 +31,11 @@ Semaphore::~Semaphore() {
  *************************************************************************************/
 
 void Semaphore::wait() {
-
+    std::unique_lock<std::mutex> lock(mtx);
+    while (count <= 0) {
+        cv.wait(lock); //waits until > 0
+    }
+    --count;
 }
 
 
@@ -41,7 +45,7 @@ void Semaphore::wait() {
  *************************************************************************************/
 
 void Semaphore::signal() {
-
+    std::lock_guard<std::mutex> lock(mtx);
+    ++count;
+    cv.notify_one(); //notify a waiting thread
 }
-
-
