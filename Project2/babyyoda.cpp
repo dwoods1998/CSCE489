@@ -4,22 +4,15 @@
  *
  *************************************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
+#include <iostream>
 #include <pthread.h>
 #include <unistd.h>
-#include "Semaphore.h"
+#include <vector>
+#include "Bounded_Buffer.h"
 
-// Semaphores that each thread will have access to as they are global in shared memory
-Semaphore *empty = NULL;
-Semaphore *full = NULL;
-
-pthread_mutex_t buf_mutex;
-
-int buffer = 0;
-int consumed = 0;
-
+//Global buffer point
+BoundedBuffer* buffer = nullptr;
+int num_produce = 0;
 
 /*************************************************************************************
  * producer_routine - this function is called when the producer thread is created.
@@ -31,43 +24,31 @@ int consumed = 0;
  *
  *************************************************************************************/
 
-void *producer_routine(void *data) {
-
-	time_t rand_seed;
-	srand((unsigned int) time(&rand_seed));
-
-	// The current serial number (incremented)
+void* producer_routine(void* data) {
 	unsigned int serialnum = 1;
-	
-	// We know the data pointer is an integer that indicates the number to produce
-	int left_to_produce = *((int *) data);
+	int left_to_produce = *(int*)data;
 
-	// Loop through the amount we're going to produce and place into the buffer
 	while (left_to_produce > 0) {
-		printf("Producer wants to put Yoda #%d into buffer...\n", serialnum);
+		std::cout << "Producer wants to put Yoda #" << serialnum << " into buffer...\n";
 
-		// Semaphore check to make sure there is an available slot
-		full->wait();
+		// create new yoda
+		Item* yoda = new Item("Yoda #" + std::to_string(serialnum));
 
-		// Place item on the next shelf slot by first setting the mutex to protect our buffer vars
-		pthread_mutex_lock(&buf_mutex);
+		//Deposit into buffer
+		buffer->Deposit(yoda);
+		
+		std::cout <<"  Yoda #"<< serialnum << " put on shelf.\n";
 
-		buffer = serialnum;
+		
 		serialnum++;
 		left_to_produce--;
-
-		pthread_mutex_unlock(&buf_mutex);
-		
-		printf("   Yoda put on shelf.\n");
-		
-		// Semaphore signal that there are items available
-		empty->signal();
 
 		// random sleep but he makes them fast so 1/20 of a second
 		usleep((useconds_t) (rand() % 200000));
 	
 	}
-	return NULL;
+
+	return nullptr;
 }
 
 
@@ -81,34 +62,28 @@ void *producer_routine(void *data) {
  *
  *************************************************************************************/
 
-void *consumer_routine(void *data) {
-	(void) data;
+void* consumer_routine(void* data) {
+	int consumerID = *(int*)data;
 
-	bool quitthreads = false;
+	while (true){
+		//std::cout << "Consumer wants to buy a Yoda...\n";
 
-	while (!quitthreads) {
-		printf("Consumer wants to buy a Yoda...\n");
+		
+		//retrieve yoda from buffer
+		Item* yoda = buffer->Retrieve();
 
-		// Semaphore to see if there are any items to take
-		empty->wait();
+		if(yoda == nullptr){
+			break; //Exit if there are none
+		}
 
-		// Take an item off the shelf
-		pthread_mutex_lock(&buf_mutex);
-	
-		printf("   Consumer bought Yoda #%d.\n", buffer);
-		buffer = 0;
-		consumed++;
-	
-		pthread_mutex_unlock(&buf_mutex);
+		
+		std::cout <<"  Consumer #" << consumerID << " bought " << yoda->GetContent() << ".\n";
+		delete yoda;
 
-		// Consumers wait up to one second
-		usleep((useconds_t) (rand() % 1000000));
-
-		full->signal();
+		// random sleep
+		usleep((useconds_t)(rand() % 1000000));
 	}
-	printf("Consumer goes home.\n");
-
-	return NULL;	
+	return nullptr;
 }
 
 
@@ -120,55 +95,70 @@ void *consumer_routine(void *data) {
  *
  *************************************************************************************/
 
-int main(int argv, const char *argc[]) {
+int main(int argc, const char* argv[]) {
 
-	// Get our argument parameters
-	if (argv < 2) {
-		printf("Invalid parameters. Format: %s <max_items>\n", argc[0]);
-		exit(0);
+	//Get our argument parameters
+	if (argc != 4) {
+		std::cerr <<"Invalid parameters. Format: " << argv[0] << " <buffer_size> <num_consumers> <max_items>\n";
+		return EXIT_FAILURE;
 	}
 
-	// User input on the size of the buffer
-	int num_produce = (unsigned int) strtol(argc[1], NULL, 10);
+	int buffer_size = std::stoi(argv[1]);
+	int num_consumers = std::stoi(argv[2]);
+	num_produce = std::stoi(argv[3]);
 
 
-	printf("Producing %d today.\n", num_produce);
+	//Initialize bounded buffer
+	buffer = new BoundedBuffer(buffer_size); //sets buffer to 10
 	
-	// Initialize our semaphores
-	empty = new Semaphore(0);
-	full = new Semaphore(1);
-
-	pthread_mutex_init(&buf_mutex, NULL); // Initialize our buffer mutex
-
 	pthread_t producer;
-	pthread_t consumer;
+	std::vector<pthread_t> consumers(num_consumers);
+	std::vector<int> consumer_ids(num_consumers);
 
-	// Launch our producer thread
-	pthread_create(&producer, NULL, producer_routine, (void *) &num_produce);
+	//Create producer thread
+	if(pthread_create(&producer, nullptr, producer_routine, &num_produce) != 0){
+		std::cerr << "Error creating producer thread\n";
+		return EXIT_FAILURE;
+	}
 
-	// Launch our consumer thread
-	pthread_create(&consumer, NULL, consumer_routine, NULL);
+	//Create Consumer threads
+	for (int i = 0; i < num_consumers; ++i){
+		consumer_ids[i] = i + 1;
+		if(pthread_create(&consumers[i], nullptr, consumer_routine, &consumer_ids[i]) != 0){
+			std::cerr<< "Error creating consumer thread\n" << i + 1 << "\n";
+			return EXIT_FAILURE;
+		}
+	}
+	
+	//wait for producer to finish
+	if(pthread_join(producer, nullptr) != 0){
+		std::cerr << "Error joining producer thread\n";
+		return EXIT_FAILURE;
+	}
 
-	// Wait for our producer thread to finish up
-	pthread_join(producer, NULL);
+	buffer->setDone();//notify production is complete
+	//std::cout << "buffer set to done\n";
 
-	printf("The manufacturer has completed his work for the day.\n");
+	//Wait for all consumers to finish
+	for (pthread_t& consumer : consumers){
+		// std::cout << "**waiting for consumer thread to finish\n";
+		// if(pthread_join(consumer, nullptr) != 0){
+		// 	std::cerr << "Error joining consumer thread\n";
+		// 	return EXIT_FAILURE;
+			
+		// }
+		pthread_cancel(consumer);
+		// std::cout <<"****consumer joined\n";
+	}
+	
 
-	printf("Waiting for consumer to buy up the rest.\n");
+	std::cout << "The manufacturer has completed his work for the day.\n";
 
-	// Give the consumers a second to finish snatching up items
-	while (consumed < num_produce)
-		sleep(1);
-
-	// Now make sure they all exited
-//	for (unsigned int i=0; i<NUM_CONSUMERS; i++) {
-//		pthread_join(consumers[i], NULL);
-//	}
-
+	
 	// We are exiting, clean up
-	delete empty;
-	delete full;		
+	delete buffer;
+			
 
-	printf("Producer/Consumer simulation complete!\n");
-
+	std::cout << "Producer/Consumer simulation complete!\n";
+	return EXIT_SUCCESS;
 }

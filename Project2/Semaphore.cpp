@@ -1,8 +1,5 @@
-#include <pthread.h>
-#include <iostream>
-#include <mutex>
-#include <condition_variable>
 #include "Semaphore.h"
+
 
 
 /*************************************************************************************
@@ -12,7 +9,7 @@
  *    Params:  count - initialization count for the semaphore
  *
  *************************************************************************************/
-Semaphore::Semaphore(int count) : count(count){}
+Semaphore::Semaphore(int initial_count) : count(initial_count), done(false){}
 
 
 /*************************************************************************************
@@ -20,9 +17,7 @@ Semaphore::Semaphore(int count) : count(count){}
  *						memory.
  *
  *************************************************************************************/
-
-Semaphore::~Semaphore() {
-}
+Semaphore::~Semaphore() {}
 
 
 /*************************************************************************************
@@ -32,12 +27,11 @@ Semaphore::~Semaphore() {
 
 void Semaphore::wait() {
     std::unique_lock<std::mutex> lock(mtx);
-    while (count <= 0) {
-        cv.wait(lock); //waits until > 0
-    }
-    --count;
+    cv.wait(lock, [this]() {return count>0 || done;}); //waits until > 0
+    if(count > 0){
+        --count;
+    } 
 }
-
 
 /*************************************************************************************
  * signal - implement a standard signal Semaphore method here
@@ -46,6 +40,15 @@ void Semaphore::wait() {
 
 void Semaphore::signal() {
     std::lock_guard<std::mutex> lock(mtx);
+    if(done){
+        return;
+    }
     ++count;
     cv.notify_one(); //notify a waiting thread
+}
+
+void Semaphore::setDone(){
+    std::lock_guard<std::mutex> lock(mtx);
+    done = true;
+    cv.notify_all();
 }
