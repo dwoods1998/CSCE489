@@ -1,0 +1,20 @@
+# Project Submission Answers
+
+If the shopkeeper hired an additional worker I would need to modify several different parts of my code.
+
+First, i would need to modify the producer thread creator to be able to make more than one.
+    for i = 1 from 1 to numProducers:
+        create producer_thread with producer_routine and producer_id(i)
+
+Second, i would need to modify the producer routine to use an input of the producer ID.
+    function producer_routine(data);
+    producer_id = data
+    ...
+
+Third, I would need to make sure that the mutex locks i currently have implimented would still work with multiple producers.  They should, but I would have to check extensively to make sure that there were no race conditions or deadlocks caused by adding more than one producer.
+
+Fourth, I would need to modify my pthread_join code to work for multiple producers.
+    for each producer_thread:
+        join producer_thread
+
+After making these changes, my code should successfully be able to perform the simulation for a multiple-producer, multiple-consumer storefront. 
