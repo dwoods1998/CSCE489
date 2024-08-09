@@ -1,98 +1,126 @@
 
- //https://stackoverflow.com/questions/15798222/is-this-a-correct-way-to-implement-a-bounded-buffer-in-c
-//
-
+/*************************************************************************************
+ * Bounded_Buffer.cpp: my implimentation of a bounded buffer necessary for the babyyoda program
+ * 
+ * I referenced a lot of the structure of my bounded buffer from the link below.
+ * https://stackoverflow.com/questions/15798222/is-this-a-correct-way-to-implement-a-bounded-buffer-in-c
+ * Additionally, i utilized chatGPT for troubleshooting and general debugging
+ *************************************************************************************/
 #include "Bounded_Buffer.h"
 #include <stdexcept>
-#include <iostream>
-#include <pthread.h>
-#include <unistd.h>
-#include <vector>
 
+/*************************************************************************************
+ * Item(constructor) - constructs an Item with the passed content
+ *
+ *    Params:  content - the content of the desired item
+ *************************************************************************************/
 Item::Item(const std::string& _content) : content(_content){}
 
+
+/*************************************************************************************
+ * GetContent - gets the content of the item
+ *					
+ *    Return:  content - content of the the item
+ *************************************************************************************/
 std::string Item::GetContent() const{return content;}
 
+
+/*************************************************************************************
+ * BoundedBuffer (constructor) - constructs the bounded buffer with the given capacity
+ *						
+ *    Params:  capacity - maximum number of items that the buffer can hold
+ *************************************************************************************/
 BoundedBuffer::BoundedBuffer(int _capacity)
     : capacity(_capacity), nextin(0), nextout(0), 
         count(0), done(false), notfull(_capacity),
         notempty(0), mutex(1){
-    if (_capacity <= 0){
-        throw std::invalid_argument("Capacity must be positive");
-    }
     buffer.resize(_capacity, nullptr);
 }
 
+
+/*************************************************************************************
+ * ~BoundedBuffer (destructor) - called when the class is destroyed. Clean up any 
+ *                      dynamic memory. Also calls setDone and clears buffer.
+ *************************************************************************************/
 BoundedBuffer::~BoundedBuffer(){
-    
-    setDone();
+    setDone();//notify all threads
     for (auto item : buffer){
         delete item; //clean allocated items
     }
-    buffer.clear(); //clear buffer
-    
+    buffer.clear(); //clear buffer  
 }
 
+
+/*************************************************************************************
+ * Deposit() - Deposits an item into the buffer. Waits if buffer is full and signals
+ *      consumers when an item is added
+ *						
+ *    Params:  _item - an item that will be added to the buffer
+ *************************************************************************************/
 void BoundedBuffer::Deposit(Item* _item){
-    // std::cout << "producer waiting to deposit...\n";
+    //std::cout << "  Producer waiting to deposit\n";
     notfull.wait(); //wait if buffer is full
-    // std::cout << "producer locked buffer and dopositing item\n";
+    //std::cout << "  roducer locked buffer and dopositing item\n";
     mutex.wait(); //lock buffer
 
     if (done){
-        delete _item; //avoids memory leak
+        delete _item; //avoid memory leak
         mutex.signal();//unlock buffer
         notfull.signal(); // signal buffer not full
-        // std::cout <<"producer found done, exiting..\n";
         return; //if production is done
     }
-    /* buffer has space and we own the mutex: insert the item */
+    //buffer has space & own mutex: insert the item
     buffer[nextin] = _item;
     nextin = (nextin + 1) % capacity;
     count++;
 
     //Notify one waiting that yoda is ready
-    notempty.signal(); //notify buffer is not empty
-    mutex.signal(); //unlock the buffer
-    // std::cout << "Producer deposited item and unlocked buffer...\n";
+    notempty.signal(); //notify buffer not empty
+    mutex.signal(); //unlock buffer
+    //std::cout << "  Producer deposited item\n";
 }
 
+
+/*************************************************************************************
+ * Retrieve() - retrieves an item from the buffer
+ *						
+ *    Return:  Item - the item retrieved from buffor or nullptr if done is true
+ *************************************************************************************/
 Item* BoundedBuffer::Retrieve(){
-    mutex.wait();
-    // std::cout << "Consumer waiting to retrieve...\n";
+    mutex.wait();//lock buffer
+    //std::cout << "  Consumer waiting to retrieve\n";
     
     while(count == 0 && !done){
-        mutex.signal();
-        notempty.wait();
-        mutex.wait();
+        mutex.signal();//unlock buffer
+        notempty.wait();//wait for buffer to be not empty
+        mutex.wait();//lock buffer
     }
-
-
+   
     Item* item = nullptr;
+    //sets and assigns next item for buffer to retrieve
     if(count > 0){
         item = buffer[nextout];
         buffer[nextout] = nullptr;
         nextout = (nextout + 1) % capacity;
         count--;
         notfull.signal();
-    }else if (done){
-        // std::cout << "Consumer found done and buffer empty, exiting....\n";
+        //std::cout << "  Consumer retrieved an item\n";
     }
-
-    mutex.signal();
+    mutex.signal();//unlock the buffer
     return item;
-    
 }
 
-
-//set flag to indicate production complete
+/*************************************************************************************
+ * setDone() - Sets the done flag for the buffer to indication production is complete
+ *			and wakes up all waiting consumers and the producer
+ *************************************************************************************/
 void BoundedBuffer::setDone(){
     mutex.wait(); //lock buffer
     done = true;
 
     //notify all that production is done
-    notempty.signal(); //release waiting consumer
-    notfull.signal(); //release waiting producer
+    notempty.signal(); //notify consumers
+    notfull.signal(); //notify producer
     
     mutex.signal(); //unlock buffer
 }

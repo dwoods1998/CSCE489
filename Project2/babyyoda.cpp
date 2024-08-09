@@ -1,10 +1,16 @@
 /*************************************************************************************
- * babyyoda - used to test your semaphore implementation and can be a starting point for
- *			     your store front implementation
+ * babyyoda - A program that uses a bounded buffer and semaphores to simulate 
+ * a Producer to multiple consumer simulation.
+ * 
+ * I took the code that was provided for the storefront and modified it to fit my bounded
+ * buffer class.  In doing so, i had to make several changes so that it would all
+ * successfully inegrate and cooperate with eachother. Additionally, I utilized chatGPT
+ * for help with the communication between the threads and for general debugging/optimization
  *
  *************************************************************************************/
 
 #include <iostream>
+#include <time.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <vector>
@@ -12,21 +18,21 @@
 
 //Global buffer point
 BoundedBuffer* buffer = nullptr;
-int num_produce = 0;
 
 /*************************************************************************************
- * producer_routine - this function is called when the producer thread is created.
+ * producer_routine - produces items and deposits them into the buffer
  *
- *			Params: data - a void pointer that should point to an integer that indicates
- *							   the total number to be produced
- *
- *			Returns: always NULL
- *
+ *			Params: data pointer to an integer indicating the total number of items to
+ *				produce
+ * 
+ *			Returns: always nullptr
  *************************************************************************************/
-
 void* producer_routine(void* data) {
 	unsigned int serialnum = 1;
 	int left_to_produce = *(int*)data;
+
+	time_t rand_seed;
+	srand((unsigned int) time(&rand_seed));
 
 	while (left_to_produce > 0) {
 		std::cout << "Producer wants to put Yoda #" << serialnum << " into buffer...\n";
@@ -39,50 +45,51 @@ void* producer_routine(void* data) {
 		
 		std::cout <<"  Yoda #"<< serialnum << " put on shelf.\n";
 
-		
 		serialnum++;
 		left_to_produce--;
 
 		// random sleep but he makes them fast so 1/20 of a second
 		usleep((useconds_t) (rand() % 200000));
-	
 	}
-
 	return nullptr;
 }
 
 
 /*************************************************************************************
- * consumer_routine - this function is called when the consumer thread is created.
+ * consumer_routine - consumes items from the buffer
  *
- *       Params: data - a void pointer that should point to a boolean that indicates
- *                      the thread should exit. Doesn't work so don't worry about it
- *
- *       Returns: always NULL
+ *       Params: data pointer to an integer indicating the consumer ID
+ *                      
+ *       Returns: always nullptr
  *
  *************************************************************************************/
 
 void* consumer_routine(void* data) {
 	int consumerID = *(int*)data;
 
+	time_t rand_seed;
+	srand((unsigned int) time(&rand_seed));
+
 	while (true){
-		//std::cout << "Consumer wants to buy a Yoda...\n";
+		std::cout << "Consumer #" << consumerID << " wants to buy a Yoda...\n";
 
 		
 		//retrieve yoda from buffer
 		Item* yoda = buffer->Retrieve();
 
 		if(yoda == nullptr){
-			break; //Exit if there are none
+			break;//Exit if there are none
+			 
 		}
 
 		
-		std::cout <<"  Consumer #" << consumerID << " bought " << yoda->GetContent() << ".\n";
+		std::cout <<"Consumer #" << consumerID << " bought " << yoda->GetContent() << ".\n";
 		delete yoda;
 
 		// random sleep
 		usleep((useconds_t)(rand() % 1000000));
 	}
+	
 	return nullptr;
 }
 
@@ -90,14 +97,16 @@ void* consumer_routine(void* data) {
 /*************************************************************************************
  * main - Standard C main function for our storefront. 
  *
- *		Expected params: pctest <num_consumers> <max_items>
- *				max_items - how many items will be produced before the shopkeeper closes
- *
+ *		Expected params: <buffer_size> <num_consumers> <max_items>
+ *				
+ *				buffer_size - set the size of the buffer
+ * 				num_consumers - how many consumers the simulation will use
+ * 				max_items - how many items will be produced before the shopkeeper closes
  *************************************************************************************/
 
 int main(int argc, const char* argv[]) {
 
-	//Get our argument parameters
+	//Get argument parameters
 	if (argc != 4) {
 		std::cerr <<"Invalid parameters. Format: " << argv[0] << " <buffer_size> <num_consumers> <max_items>\n";
 		return EXIT_FAILURE;
@@ -105,8 +114,22 @@ int main(int argc, const char* argv[]) {
 
 	int buffer_size = std::stoi(argv[1]);
 	int num_consumers = std::stoi(argv[2]);
-	num_produce = std::stoi(argv[3]);
+	int num_produce = std::stoi(argv[3]);
+	
+	//input validation
+	if (buffer_size <= 0){
+		std::cerr << "Buffer size must be an integer >= 1\n";
+		return EXIT_FAILURE;
+	}else if (num_consumers <= 0){
+		std::cerr << "Number of consumers must be an integer >= 1\n";
+		return EXIT_FAILURE;
+	}else if (num_produce < 0){
+		std::cerr << "Maximum items to produce must be an integer >= 0\n";
+		return EXIT_FAILURE;
+	}
 
+	std::cout << "Producing "<<num_produce<< " yodas today.\n";
+	
 
 	//Initialize bounded buffer
 	buffer = new BoundedBuffer(buffer_size); //sets buffer to 10
@@ -137,23 +160,25 @@ int main(int argc, const char* argv[]) {
 	}
 
 	buffer->setDone();//notify production is complete
-	//std::cout << "buffer set to done\n";
-
-	//Wait for all consumers to finish
-	for (pthread_t& consumer : consumers){
-		// std::cout << "**waiting for consumer thread to finish\n";
-		// if(pthread_join(consumer, nullptr) != 0){
-		// 	std::cerr << "Error joining consumer thread\n";
-		// 	return EXIT_FAILURE;
-			
-		// }
-		pthread_cancel(consumer);
-		// std::cout <<"****consumer joined\n";
-	}
-	
 
 	std::cout << "The manufacturer has completed his work for the day.\n";
 
+	//cean up threads
+	int tempID = 1;
+	if (num_consumers > buffer_size){ // this handles an error where the threads hangup if consumers is > buffer size
+		for (pthread_t& consumer : consumers){
+			pthread_cancel(consumer);
+			std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
+			tempID += 1;
+		}
+	}else{
+		for (pthread_t& consumer : consumers){
+			pthread_join(consumer, nullptr);
+			std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
+			tempID += 1;
+		}
+
+	}
 	
 	// We are exiting, clean up
 	delete buffer;
