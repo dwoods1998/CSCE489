@@ -164,7 +164,21 @@ int main(int argc, const char* argv[]) {
 	std::cout << "The manufacturer has completed his work for the day.\n";
 
 	// //cean up threads
+	// int tempID = 1;
+	// if (num_consumers >= buffer_size){ // this handles an error where the threads hangup if consumers is > buffer size
+	// 	for (pthread_t& consumer : consumers){
+	// 		pthread_cancel(consumer);
+	// 		std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
+	// 		tempID += 1;
+	// 	}
+	// }else{
+	// 	for (pthread_t& consumer : consumers){
+	// 		pthread_join(consumer, nullptr);
+	// 		std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
+	// 		tempID += 1;
+	// 	}
 
+	// }
 	int tempID = 1;
 	for (pthread_t& consumer : consumers){
 			pthread_join(consumer, nullptr);
