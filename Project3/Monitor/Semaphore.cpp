@@ -1,12 +1,5 @@
-/*************************************************************************************
- * Bounded_Buffer.cpp: my implimentation of a bounded buffer necessary for the babyyoda program
- * 
- * I found several examples of semaphore code via google and continuously modified it as
- * I implemented the code for the babyyoda program.
- * Additionally, I utilized chatGPT for troubleshooting and general debugging
- *************************************************************************************/
-
 #include "Semaphore.h"
+
 
 /*************************************************************************************
  * Semaphore (constructor) - this should take count and place it into a local variable.
@@ -17,46 +10,42 @@
  *************************************************************************************/
 Semaphore::Semaphore(int initial_count) : count(initial_count), done(false){}
 
-
 /*************************************************************************************
  * ~Semaphore (destructor) - called when the class is destroyed. Clean up any dynamic
  *						memory.
  *
  *************************************************************************************/
-Semaphore::~Semaphore() {}
-
+Semaphore::~Semaphore(){}
 
 /*************************************************************************************
  * wait - implement a standard wait Semaphore method here
  *
  *************************************************************************************/
-
-void Semaphore::wait() {
+void Semaphore::wait(){
     std::unique_lock<std::mutex> lock(mtx);
-    cv.wait(lock, [this]() {return count>0 || done;}); //waits until > 0
-    if(count > 0){
+    cv.wait(lock, [this]() {return count > 0 || done;});
+    if (count > 0){
         --count;
-    } 
+    }
 }
 
 /*************************************************************************************
  * signal - implement a standard signal Semaphore method here
  *
  *************************************************************************************/
-
-void Semaphore::signal() {
+void Semaphore::signal(){
     std::lock_guard<std::mutex> lock(mtx);
     if(!done){
         ++count;
-        cv.notify_one(); //notify a waiting thread
+        cv.notify_one();
     }
-    
 }
+
 /*************************************************************************************
- * setDone - implement a standard signal for when production is done
+ * isDone - implement a standard signal for when production is done
  *
  *************************************************************************************/
-void Semaphore::setDone(){
+void Semaphore::isDone(){
     std::lock_guard<std::mutex> lock(mtx);
     done = true;
     cv.notify_all();

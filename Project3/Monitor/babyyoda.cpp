@@ -28,24 +28,14 @@ BoundedBuffer* buffer = nullptr;
  *			Returns: always nullptr
  *************************************************************************************/
 void* producer_routine(void* data) {
-	unsigned int serialnum = 1;
 	int left_to_produce = *(int*)data;
 
 	time_t rand_seed;
 	srand((unsigned int) time(&rand_seed));
 
 	while (left_to_produce > 0) {
-		std::cout << "Producer wants to put Yoda #" << serialnum << " into buffer...\n";
-
-		// create new yoda
-		Item* yoda = new Item("Yoda #" + std::to_string(serialnum));
-
 		//Deposit into buffer
-		buffer->Deposit(yoda);
-		
-		std::cout <<"  Yoda #"<< serialnum << " put on shelf.\n";
-
-		serialnum++;
+		buffer->Deposit();
 		left_to_produce--;
 
 		// random sleep but he makes them fast so 1/20 of a second
@@ -71,19 +61,14 @@ void* consumer_routine(void* data) {
 	srand((unsigned int) time(&rand_seed));
 
 	while (true){
-		std::cout << "Consumer #" << consumerID << " wants to buy a Yoda...\n";
-
-		
+		std::cout <<" Consumer #" << consumerID << " wants to buy a yoda.\n";
 		//retrieve yoda from buffer
-		Item* yoda = buffer->Retrieve();
+		Item* yoda = buffer->Retrieve(consumerID);
 
 		if(yoda == nullptr){
-			break;//Exit if there are none
-			 
+			break;//Exit if there are none 
 		}
 
-		
-		std::cout <<"Consumer #" << consumerID << " bought " << yoda->GetContent() << ".\n";
 		delete yoda;
 
 		// random sleep
@@ -163,22 +148,6 @@ int main(int argc, const char* argv[]) {
 
 	std::cout << "The manufacturer has completed his work for the day.\n";
 
-	// //cean up threads
-	// int tempID = 1;
-	// if (num_consumers >= buffer_size){ // this handles an error where the threads hangup if consumers is > buffer size
-	// 	for (pthread_t& consumer : consumers){
-	// 		pthread_cancel(consumer);
-	// 		std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
-	// 		tempID += 1;
-	// 	}
-	// }else{
-	// 	for (pthread_t& consumer : consumers){
-	// 		pthread_join(consumer, nullptr);
-	// 		std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
-	// 		tempID += 1;
-	// 	}
-
-	// }
 	int tempID = 1;
 	for (pthread_t& consumer : consumers){
 			pthread_join(consumer, nullptr);
