@@ -10,15 +10,16 @@
  *************************************************************************************/
 
 #include <iostream>
-#include <time.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <vector>
+#include <memory>
+#include <thread>
+#include <chrono>
+#include <random>
 #include "Bounded_Buffer.h"
+#include "ThreadPool.h"
+#include <atomic>
 
-//Global buffer point
-BoundedBuffer* buffer = nullptr;
-
+std::atomic<int> active_producers(0);
 /*************************************************************************************
  * producer_routine - produces items and deposits them into the buffer
  *
@@ -27,21 +28,23 @@ BoundedBuffer* buffer = nullptr;
  * 
  *			Returns: always nullptr
  *************************************************************************************/
-void* producer_routine(void* data) {
-	int left_to_produce = *(int*)data;
+void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(0, 200000);
 
-	time_t rand_seed;
-	srand((unsigned int) time(&rand_seed));
+	++active_producers;
 
 	while (left_to_produce > 0) {
 		//Deposit into buffer
-		buffer->Deposit();
+		buffer->Deposit(producerID);
 		left_to_produce--;
-
-		// random sleep but he makes them fast so 1/20 of a second
-		usleep((useconds_t) (rand() % 200000));
+		//std::cout<<active_producers<< "active producers\n";
+		//sleep
+		std::this_thread::sleep_for(std::chrono::microseconds(dis(gen)));
 	}
-	return nullptr;
+
+	--active_producers;
 }
 
 
@@ -54,28 +57,29 @@ void* producer_routine(void* data) {
  *
  *************************************************************************************/
 
-void* consumer_routine(void* data) {
-	int consumerID = *(int*)data;
+void consumer_task(int consumerID, BoundedBuffer* buffer) {
 
-	time_t rand_seed;
-	srand((unsigned int) time(&rand_seed));
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> dis(0, 100000);
 
 	while (true){
 		std::cout <<" Consumer #" << consumerID << " wants to buy a yoda.\n";
 		//retrieve yoda from buffer
 		Item* yoda = buffer->Retrieve(consumerID);
 
-		if(yoda == nullptr){
+		if(yoda == nullptr && buffer->isDone()){
 			break;//Exit if there are none 
 		}
 
-		delete yoda;
+		if(yoda != nullptr){
+			delete yoda;
+		}
 
 		// random sleep
-		usleep((useconds_t)(rand() % 1000000));
+		std::this_thread::sleep_for(std::chrono::microseconds(dis(gen)));
 	}
 	
-	return nullptr;
 }
 
 
@@ -92,24 +96,19 @@ void* consumer_routine(void* data) {
 int main(int argc, const char* argv[]) {
 
 	//Get argument parameters
-	if (argc != 4) {
-		std::cerr <<"Invalid parameters. Format: " << argv[0] << " <buffer_size> <num_consumers> <max_items>\n";
+	if (argc != 5) {
+		std::cerr <<"Invalid parameters. Format: " << argv[0] << " <buffer_size> <num_producers> <num_consumers> <max_items>\n";
 		return EXIT_FAILURE;
 	}
 
 	int buffer_size = std::stoi(argv[1]);
-	int num_consumers = std::stoi(argv[2]);
-	int num_produce = std::stoi(argv[3]);
+	int num_producers = std::stoi(argv[2]);
+	int num_consumers = std::stoi(argv[3]);
+	int num_produce = std::stoi(argv[4]);
 	
 	//input validation
-	if (buffer_size <= 0){
-		std::cerr << "Buffer size must be an integer >= 1\n";
-		return EXIT_FAILURE;
-	}else if (num_consumers <= 0){
-		std::cerr << "Number of consumers must be an integer >= 1\n";
-		return EXIT_FAILURE;
-	}else if (num_produce < 0){
-		std::cerr << "Maximum items to produce must be an integer >= 0\n";
+	if (buffer_size <= 0 || num_producers <= 0 || num_consumers<= 0 || num_produce < 0){
+		std::cerr << "Invalid paramaters. Buffer size, number of producers and number of consumers must be >=1; number to produce must be >=0.\n";
 		return EXIT_FAILURE;
 	}
 
@@ -117,46 +116,37 @@ int main(int argc, const char* argv[]) {
 	
 
 	//Initialize bounded buffer
-	buffer = new BoundedBuffer(buffer_size); //sets buffer to 10
+	BoundedBuffer buffer(buffer_size);
 	
-	pthread_t producer;
-	std::vector<pthread_t> consumers(num_consumers);
-	std::vector<int> consumer_ids(num_consumers);
+	ThreadPool threadPool(num_producers + num_consumers);
 
-	//Create producer thread
-	if(pthread_create(&producer, nullptr, producer_routine, &num_produce) != 0){
-		std::cerr << "Error creating producer thread\n";
-		return EXIT_FAILURE;
+	//Items per producer
+	int itemsPerProducer = num_produce / num_producers;
+	int remaining_items = num_produce % num_producers;
+
+	// std::cout<<"test1\n";
+	//Create producer tasks
+	for (int i = 0; i < num_producers; ++i){
+		int produce_count = itemsPerProducer + (i < remaining_items ? 1 : 0);
+		threadPool.enqueue([&buffer, i, produce_count]() {
+			producer_task(produce_count, i+1, &buffer);
+		});
 	}
-
+	
+	// std::cout<<"test2\n";
 	//Create Consumer threads
 	for (int i = 0; i < num_consumers; ++i){
-		consumer_ids[i] = i + 1;
-		if(pthread_create(&consumers[i], nullptr, consumer_routine, &consumer_ids[i]) != 0){
-			std::cerr<< "Error creating consumer thread\n" << i + 1 << "\n";
-			return EXIT_FAILURE;
-		}
+		threadPool.enqueue([i, &buffer](){
+			consumer_task(i + 1, &buffer);
+		});
 	}
 	
-	//wait for producer to finish
-	if(pthread_join(producer, nullptr) != 0){
-		std::cerr << "Error joining producer thread\n";
-		return EXIT_FAILURE;
+	std::cout<<"\n";
+
+	while (active_producers > 0){
+		//causes the program to wait before executing the next line
 	}
-
-	buffer->setDone();//notify production is complete
-
-	std::cout << "The manufacturer has completed his work for the day.\n";
-
-	int tempID = 1;
-	for (pthread_t& consumer : consumers){
-			pthread_join(consumer, nullptr);
-			std::cout <<"Consumer #" <<tempID<<" left for the day.\n";
-			tempID += 1;
-		}
-	// We are exiting, clean up
-	delete buffer;
-			
+	buffer.setDone();
 
 	std::cout << "Producer/Consumer simulation complete!\n";
 	return EXIT_SUCCESS;

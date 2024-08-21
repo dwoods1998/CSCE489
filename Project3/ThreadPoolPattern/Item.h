@@ -6,7 +6,7 @@
 class Item{
 
     public:
-        explicit Item(const std::string& _content);// : content(_content){}
+        Item(const std::string& _content);// : content(_content){}
         std::string GetContent() const; //{return content;}     
     
     private: 

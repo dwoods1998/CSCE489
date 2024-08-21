@@ -6,35 +6,32 @@
 #define BOUNDED_BUFFER_h
 
 #include "Item.h"
-#include "Semaphore.h"
-#include <vector>  
-#include <string>
-#include <unordered_map>
+#include <mutex>
+#include <queue> 
 #include <condition_variable>
 
 class BoundedBuffer{
 
     public:
-        explicit BoundedBuffer(int _capacity);
+        explicit BoundedBuffer(int capacity);
         ~BoundedBuffer();
 
-        void Deposit(); 
+        void Deposit(int producerID); 
         Item* Retrieve(int consumerID);        
         void setDone();
+        bool isDone();
         
 
     private:
+        std::queue<Item*> queue;
         int capacity;
-        int nextin;
-        int nextout;
         int count;
         bool done;
+        std::mutex mutex;
+        std::condition_variable notfull;
+        std::condition_variable notempty;
+        int serialnum;
 
-        Semaphore notfull;
-        Semaphore notempty;
-        Semaphore mutex;
-        std::vector<Item*> buffer;
-        int serialnum; 
  
 };
 

@@ -7,9 +7,9 @@
  * Additionally, i utilized chatGPT for troubleshooting and general debugging
  *************************************************************************************/
 #include "Bounded_Buffer.h"
-#include <stdexcept>
 #include <iostream>
-#include <sstream>
+#include <stdexcept>
+#include <memory>
 
 /*************************************************************************************
  * BoundedBuffer (constructor) - constructs the bounded buffer with the given capacity
@@ -17,11 +17,9 @@
  *    Params:  capacity - maximum number of items that the buffer can hold
  *************************************************************************************/
 BoundedBuffer::BoundedBuffer(int _capacity)
-    : capacity(_capacity), nextin(0), nextout(0), 
-        count(0), done(false), notfull(_capacity),
-        notempty(0), mutex(1), serialnum(1) {
-    buffer.resize(_capacity, nullptr);
+    : capacity(_capacity), count(0), done(false), serialnum(1){
 }
+
 
 
 /*************************************************************************************
@@ -29,11 +27,13 @@ BoundedBuffer::BoundedBuffer(int _capacity)
  *                      dynamic memory. Also calls setDone and clears buffer.
  *************************************************************************************/
 BoundedBuffer::~BoundedBuffer(){
-    setDone();//sets done flag
-    for (auto item : buffer){
-        delete item; //clean allocated items
+    //setDone();//sets done flag
+    std::unique_lock<std::mutex> lock(mutex);
+    while (!queue.empty()){
+        delete queue.front(); //clean allocated items
+        queue.pop();
     }
-    buffer.clear(); //clear buffer  
+     
 }
 
 
@@ -43,26 +43,26 @@ BoundedBuffer::~BoundedBuffer(){
  *						
  *    Params:  _item - an item that will be added to the buffer
  *************************************************************************************/
-void BoundedBuffer::Deposit(){
-    notfull.wait(); //wait if buffer is full
-    mutex.wait(); //locks buffer
+void BoundedBuffer::Deposit(int producerID){
+    std::unique_lock<std::mutex> lock(mutex);
+    notfull.wait(lock, [this]{return count < capacity || done; });
     
 
     if (done){
         return;
     }
 
-    Item* item = new Item("Yoda #" + std::to_string(serialnum++));
-    
-    //buffer has space & own mutex: insert the item
-    buffer[nextin] = item;
-    nextin = (nextin + 1) % capacity;
-    count++;
+    Item* item = new Item("Yoda #" + std::to_string(serialnum));
+    ++serialnum;
 
-    std::cout <<"Producer put Yoda #" <<serialnum - 1<< " put on shelf.\n";
+    queue.push(item);
+    ++count;
+    
+
+    std::cout <<"Producer #" <<producerID<<" put Yoda #" <<serialnum - 1<< " on shelf.\n";
     //Notify one waiting that yoda is ready
-    notempty.signal(); //notify buffer not empty
-    mutex.signal();
+    notempty.notify_one();
+    
 }
 
 
@@ -72,7 +72,9 @@ void BoundedBuffer::Deposit(){
  *    Return:  Item - the item retrieved from buffor or nullptr if done is true
  *************************************************************************************/
 Item* BoundedBuffer::Retrieve(int consumerID){
-    notempty.wait();
+    std::unique_lock<std::mutex> lock(mutex);
+    notempty.wait(lock, [this]{return count>0 || done;});
+
 
     if (count == 0 && done) {
         return nullptr;
@@ -81,14 +83,12 @@ Item* BoundedBuffer::Retrieve(int consumerID){
     
     //sets and assigns next item for buffer to retrieve
     
-    Item* item = buffer[nextout];
-    buffer[nextout] = nullptr;
-    nextout = (nextout + 1) % capacity;
+    Item* item = queue.front();
+    queue.pop();
     count--;
-    notfull.signal();
+    notfull.notify_one();
     
-    std::cout << "Consumer#" << consumerID << " bought " << item->GetContent() << ".\n";
-    mutex.signal();
+    std::cout << "Consumer #" << consumerID << " bought " << item->GetContent() << ".\n";
     return item;
     
 }
@@ -98,10 +98,14 @@ Item* BoundedBuffer::Retrieve(int consumerID){
  *			and wakes up all waiting consumers and the producer
  *************************************************************************************/
 void BoundedBuffer::setDone(){
-    mutex.wait(); //lock buffer
+    std::unique_lock<std::mutex> lock(mutex);
     done = true;
     //notify all that production is done
-    notempty.isDone(); //notify consumers
+    notempty.notify_all(); //notify consumers
+    notfull.notify_all(); //notify producer
+}
 
-    notfull.signal(); //notify producer
+bool BoundedBuffer::isDone() {
+    std::unique_lock<std::mutex> lock(mutex);
+    return done;
 }
