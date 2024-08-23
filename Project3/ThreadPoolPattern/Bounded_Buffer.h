@@ -28,6 +28,7 @@ class BoundedBuffer{
         int count;
         bool done;
         std::mutex mutex;
+        std::mutex coutMutex;
         std::condition_variable notfull;
         std::condition_variable notempty;
         int serialnum;

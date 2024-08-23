@@ -11,6 +11,8 @@
 #include <stdexcept>
 #include <memory>
 
+
+
 /*************************************************************************************
  * BoundedBuffer (constructor) - constructs the bounded buffer with the given capacity
  *						
@@ -58,8 +60,10 @@ void BoundedBuffer::Deposit(int producerID){
     queue.push(item);
     ++count;
     
-
+    
+    //std::lock_guard<std::mutex> lock(coutMutex);
     std::cout <<"Producer #" <<producerID<<" put Yoda #" <<serialnum - 1<< " on shelf.\n";
+    
     //Notify one waiting that yoda is ready
     notempty.notify_one();
     
@@ -85,10 +89,14 @@ Item* BoundedBuffer::Retrieve(int consumerID){
     
     Item* item = queue.front();
     queue.pop();
-    count--;
+    --count;
     notfull.notify_one();
     
+    //std::lock_guard<std::mutex> lock(coutMutex);
     std::cout << "Consumer #" << consumerID << " bought " << item->GetContent() << ".\n";
+
+    
+    
     return item;
     
 }

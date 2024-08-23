@@ -16,6 +16,7 @@ class ThreadPool{
         ~ThreadPool();
 
         void enqueue(std::function<void()> task);
+        size_t getTasksRemaining();
 
     private:
         //workers

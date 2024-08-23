@@ -18,8 +18,20 @@
 #include "Bounded_Buffer.h"
 #include "ThreadPool.h"
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 
+//atomic variable for active producers
 std::atomic<int> active_producers(0);
+
+//CV & mutex for when producers are done
+bool doneProducing= false;
+std::mutex cv_m;
+std:: condition_variable cv;
+
+//Mutex for finished output
+std::mutex outputMTX;
+
 /*************************************************************************************
  * producer_routine - produces items and deposits them into the buffer
  *
@@ -45,6 +57,18 @@ void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
 	}
 
 	--active_producers;
+
+	
+    //notify main thread producers are done
+    if (active_producers == 0) {
+		std::lock_guard<std::mutex> lock(cv_m);
+        doneProducing = true;
+        cv.notify_all();
+    }
+
+	std::lock_guard<std::mutex> lock(outputMTX);
+	std::cout << "  Producer #"<< producerID << " has finished for the day.\n";
+	
 }
 
 
@@ -64,21 +88,25 @@ void consumer_task(int consumerID, BoundedBuffer* buffer) {
 	std::uniform_int_distribution<> dis(0, 100000);
 
 	while (true){
-		std::cout <<" Consumer #" << consumerID << " wants to buy a yoda.\n";
+		std::cout <<"Consumer #" << consumerID << " wants to buy a yoda.\n";
 		//retrieve yoda from buffer
 		Item* yoda = buffer->Retrieve(consumerID);
 
-		if(yoda == nullptr && buffer->isDone()){
-			break;//Exit if there are none 
+		if (yoda == nullptr) {
+            std::unique_lock<std::mutex> lock(cv_m);
+            cv.wait(lock, [] { return doneProducing; });
+            if (buffer->isDone()) {
+                break;
+            }
+        } else {
+            delete yoda;
 		}
-
-		if(yoda != nullptr){
-			delete yoda;
-		}
-
 		// random sleep
 		std::this_thread::sleep_for(std::chrono::microseconds(dis(gen)));
 	}
+
+	std::lock_guard<std::mutex> lock(outputMTX);
+	std::cout << "  Consumer #"<< consumerID << " has left for the day.\n";
 	
 }
 
@@ -141,11 +169,13 @@ int main(int argc, const char* argv[]) {
 		});
 	}
 	
-	std::cout<<"\n";
+	
 
-	while (active_producers > 0){
-		//causes the program to wait before executing the next line
+	{
+		std::unique_lock<std::mutex> lock(cv_m);
+		cv.wait(lock, [] {return doneProducing;});
 	}
+
 	buffer.setDone();
 
 	std::cout << "Producer/Consumer simulation complete!\n";

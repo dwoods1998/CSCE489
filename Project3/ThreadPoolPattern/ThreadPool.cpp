@@ -29,7 +29,9 @@ ThreadPool::~ThreadPool(){
     }
     condition.notify_all();
     for (std::thread &worker : workers){
-        worker.join();
+        if(worker.joinable()){
+            worker.join();
+        }
     }
 }
      
@@ -46,4 +48,9 @@ void ThreadPool::enqueue(std::function<void()> task){
     }
     condition.notify_one();
     
+}
+
+size_t ThreadPool::getTasksRemaining(){
+    std::unique_lock<std::mutex> lock(queueMutex);
+    return tasksRemaining;
 }
