@@ -55,3 +55,7 @@ dkms.conf
 # Visual Studio Code specific files
 .vscode/
 *.json
+.vscode/launch.json
+.vscode/c_cpp_properties.json
+.vscode/settings.json
+Project3/ThreadPoolPattern/build/Debug/outDebug
