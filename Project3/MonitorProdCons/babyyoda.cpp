@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <vector>
 #include "Bounded_Buffer.h"
+#include "Monitor.h"
 
 //Global buffer point
 BoundedBuffer* buffer = nullptr;

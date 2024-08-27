@@ -7,7 +7,6 @@
  * Additionally, i utilized chatGPT for troubleshooting and general debugging
  *************************************************************************************/
 #include "Bounded_Buffer.h"
-#include <stdexcept>
 #include <iostream>
 #include <sstream>
 
@@ -18,8 +17,7 @@
  *************************************************************************************/
 BoundedBuffer::BoundedBuffer(int _capacity)
     : capacity(_capacity), nextin(0), nextout(0), 
-        count(0), done(false), notfull(_capacity),
-        notempty(0), mutex(1), serialnum(1) {
+        count(0), done(false), serialnum(1) {
     buffer.resize(_capacity, nullptr);
 }
 
@@ -44,11 +42,14 @@ BoundedBuffer::~BoundedBuffer(){
  *    Params:  _item - an item that will be added to the buffer
  *************************************************************************************/
 void BoundedBuffer::Deposit(){
-    notfull.wait(); //wait if buffer is full
-    mutex.wait(); //locks buffer
+    monitor.Enter();
+    while (count == capacity){
+        monitor.Wait();
+    }
     
 
     if (done){
+        monitor.Exit();
         return;
     }
 
@@ -61,8 +62,8 @@ void BoundedBuffer::Deposit(){
 
     std::cout <<"Producer put Yoda #" <<serialnum - 1<< " put on shelf.\n";
     //Notify one waiting that yoda is ready
-    notempty.signal(); //notify buffer not empty
-    mutex.signal();
+    monitor.Signal(); //notify buffer not empty
+    monitor.Exit();
 }
 
 
@@ -72,9 +73,13 @@ void BoundedBuffer::Deposit(){
  *    Return:  Item - the item retrieved from buffor or nullptr if done is true
  *************************************************************************************/
 Item* BoundedBuffer::Retrieve(int consumerID){
-    notempty.wait();
+    monitor.Enter();
+    while(count == 0 && !done){
+        monitor.Wait(); //wait if buffer is empty
+    }
 
     if (count == 0 && done) {
+        monitor.Exit();
         return nullptr;
     }
    
@@ -85,10 +90,10 @@ Item* BoundedBuffer::Retrieve(int consumerID){
     buffer[nextout] = nullptr;
     nextout = (nextout + 1) % capacity;
     count--;
-    notfull.signal();
+    monitor.Signal(); //Notify buffer not full
     
     std::cout << "Consumer#" << consumerID << " bought " << item->GetContent() << ".\n";
-    mutex.signal();
+    monitor.Exit();
     return item;
     
 }
@@ -98,10 +103,10 @@ Item* BoundedBuffer::Retrieve(int consumerID){
  *			and wakes up all waiting consumers and the producer
  *************************************************************************************/
 void BoundedBuffer::setDone(){
-    mutex.wait(); //lock buffer
+    monitor.Enter(); //Lock buffer
     done = true;
     //notify all that production is done
-    notempty.isDone(); //notify consumers
+    monitor.Broadcast(); //notify consumers
 
-    notfull.signal(); //notify producer
+    monitor.Exit();
 }
