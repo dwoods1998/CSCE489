@@ -29,9 +29,6 @@ bool doneProducing= false;
 std::mutex cv_m;
 std:: condition_variable cv;
 
-//Mutex for finished output
-std::mutex outputMTX;
-
 /*************************************************************************************
  * producer_task - Produces items and deposits them into the buffer
  *
@@ -65,7 +62,6 @@ void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
         cv.notify_all(); //notify all waiting threads
 	}
 
-	//std::lock_guard<std::mutex> lock(outputMTX);
 	std::cout << "  Producer #"<< producerID << " has finished for the day.\n";
 }
 
@@ -103,7 +99,6 @@ void consumer_task(int consumerID, BoundedBuffer* buffer) {
 		std::this_thread::sleep_for(std::chrono::microseconds(dis(gen)));// random sleep
 	}
 
-	//std::lock_guard<std::mutex> lock(outputMTX);
 	std::cout << "  Consumer #"<< consumerID << " has left for the day.\n";
 }
 
