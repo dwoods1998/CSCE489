@@ -1,17 +1,21 @@
+/*************************************************************************************
+ * Item.cpp - Implementation of the Item class
+ *************************************************************************************/
 #include "Item.h"
 
 
 /*************************************************************************************
- * Item(constructor) - constructs an Item with the passed content
+ * Item - Constructs an Item with specified content
  *
- *    Params:  content - the content of the desired item
+ * Parameters:
+ *   _content - Content of the item
  *************************************************************************************/
 Item::Item(const std::string& _content) : content(_content){}
 
 /*************************************************************************************
- * GetContent - gets the content of the item
- *					
- *    Return:  content - content of the the item
+ * GetContent - Returns the content of the item
+ *
+ * Returns: Content of the item
  *************************************************************************************/
 std::string Item::GetContent() const{return content;}
 
