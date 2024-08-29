@@ -1,7 +1,7 @@
 CC=g++
 CXXFLAGS=-g -Wall -Wextra -O0 -pthread
-DEPS = Item.h Bounded_Buffer.h 
-OBJ = babyyoda.o Item.o Bounded_Buffer.o 
+DEPS = Item.h BoundedBuffer.h ThreadPool.h Monitor.h
+OBJ = babyyoda.o Item.o BoundedBuffer.o ThreadPool.o Monitor.o
 BIN = babyyoda 
 
 %.o: %.cpp $(DEPS)
