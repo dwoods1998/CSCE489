@@ -20,14 +20,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-
-//atomic variable for active producers
-std::atomic<int> active_producers(0);
-
-//CV & mutex for when producers are done
-bool doneProducing= false;
-std::mutex cv_m;
-std:: condition_variable cv;
+#include <future>
 
 //Mutex for finished output
 std::mutex outputMTX;
@@ -42,13 +35,11 @@ std::mutex outputMTX;
  *
  * Returns: None
  *************************************************************************************/
-void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
+void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer, std::promise<void>& promise) {
 	//Sets up a random sleep duration
 	std::random_device rd;
 	std::mt19937 gen(rd());
 	std::uniform_int_distribution<> dis(0, 200000);
-
-	++active_producers; //increment active producer count
 
 	while (left_to_produce > 0) {
 		buffer->Deposit(producerID); //Deposit an item into buffer
@@ -56,14 +47,8 @@ void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
 		std::this_thread::sleep_for(std::chrono::microseconds(dis(gen))); //sleep for random distribution
 	}
 
-	--active_producers; //decrement active producer count
-
-    //notify main thread producers are done
-    if (active_producers == 0) {
-		std::lock_guard<std::mutex> lock(cv_m);
-        doneProducing = true; // set flag indicating production is done
-        cv.notify_all(); //notify all waiting threads
-	}
+	//set promise to indicate producer completion
+	promise.set_value();
 
 	std::lock_guard<std::mutex> lock(outputMTX);
 	std::cout << "  Producer #"<< producerID << " has finished for the day.\n";
@@ -78,7 +63,7 @@ void producer_task(int left_to_produce, int producerID, BoundedBuffer* buffer) {
  *
  * Returns: None
  *************************************************************************************/
-void consumer_task(int consumerID, BoundedBuffer* buffer) {
+void consumer_task(int consumerID, BoundedBuffer* buffer, std::shared_future<void> producerFuture) {
 	//Sets up random sleep duration
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -91,11 +76,9 @@ void consumer_task(int consumerID, BoundedBuffer* buffer) {
 
 		//If not item is retrieved, wait for production to be done
 		if (yoda == nullptr) { //check if production is done
-            std::unique_lock<std::mutex> lock(cv_m);
-            cv.wait(lock, [] { return doneProducing; });//wait for production to finish
-            if (buffer->isDone()) {//check if buffer is done
-                break; //exit if buffer is done
-            }
+            if (producerFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+				//if future is ready, stop consuming
+				break;
         } else {
             delete yoda; //delete the consumed item
 		}
@@ -105,6 +88,7 @@ void consumer_task(int consumerID, BoundedBuffer* buffer) {
 
 	std::lock_guard<std::mutex> lock(outputMTX);
 	std::cout << "  Consumer #"<< consumerID << " has left for the day.\n";
+	}
 }
 
 /*************************************************************************************
@@ -145,30 +129,31 @@ int main(int argc, const char* argv[]) {
 	//Create a thread pool with total number of threads
 	ThreadPool threadPool(num_producers + num_consumers);
 
+	//create promises and futures for producers
+	std::vector<std::promise<void>> producerPromises(num_producers);
+	std::vector<std::shared_future<void>> producerFutures(num_producers);
+	for (int i = 0; i < num_producers; ++i) {
+		producerFutures[i] = producerPromises[i].get_future().share();
+	}
+
 	//calculate items per producer
 	int itemsPerProducer = num_produce / num_producers;
 	int remaining_items = num_produce % num_producers;
 
 	
 	//Create and enqueue producer tasks
-	for (int i = 0; i < num_producers; ++i){
+	for (int i = 0; i < num_producers; ++i) {
 		int produce_count = itemsPerProducer + (i < remaining_items ? 1 : 0);
-		threadPool.enqueue([&buffer, i, produce_count]() {
-			producer_task(produce_count, i+1, &buffer);
+		threadPool.enqueue([&buffer, i, produce_count, &promise = producerPromises[i]] {
+			producer_task(produce_count, i + 1, &buffer, promise);
 		});
 	}
 	
 	//Create and enqueue consumer tasks
-	for (int i = 0; i < num_consumers; ++i){
-		threadPool.enqueue([i, &buffer](){
-			consumer_task(i + 1, &buffer);
+	for (int i = 0; i < num_consumers; ++i) {
+		threadPool.enqueue([i, &buffer, future = producerFutures[i % num_producers]] {
+			consumer_task(i + 1, &buffer, future);
 		});
-	}
-	
-	//wait for all producers to finish producing
-	{
-		std::unique_lock<std::mutex> lock(cv_m);
-		cv.wait(lock, [] {return doneProducing;});
 	}
 
 	//mark buffer as done
