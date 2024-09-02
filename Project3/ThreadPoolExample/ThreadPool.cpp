@@ -1,5 +1,6 @@
 /*************************************************************************************
- * ThreadPool.cpp - Implementation of the ThreadPool class
+ * ThreadPool.cpp - Implementation of the ThreadPool class based off of examples from 
+ * https://stackoverflow.com/questions/15752659/thread-pooling-in-c11
  *************************************************************************************/
 #include "ThreadPool.h"
 #include <stdexcept>
